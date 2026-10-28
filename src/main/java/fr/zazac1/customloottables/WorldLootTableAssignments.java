@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.UUID;
 
-/** Tracks the running save so global settings can be combined with one isolated world profile. */
+/** Tracks the running save so runtime loot tables stay scoped to one isolated world profile. */
 public final class WorldLootTableAssignments {
     private static volatile String activeWorldId = "";
     private static volatile String activeWorldName = "";
@@ -17,9 +17,12 @@ public final class WorldLootTableAssignments {
             activeWorldId = worldId(server.getSavePath(WorldSavePath.ROOT));
             activeWorldName = server.getSaveProperties().getLevelName();
             if (activeWorldName == null || activeWorldName.isBlank()) activeWorldName = "Current world";
-            ModConfig config = ConfigLoader.get();
-            config.getOrCreateWorldConfig(activeWorldId, activeWorldName);
-            ConfigLoader.saveAndInvalidate(config);
+            // "All Worlds" belongs to the local single-player library. A dedicated
+            // server keeps its own authoritative world configuration and must never
+            // import templates from the machine that happens to host it.
+            if (!server.isDedicated()) {
+                ConfigLoader.ensureAutomaticLibraryTablesForWorld(activeWorldId, activeWorldName);
+            }
         });
         // The first loot reload happens before SERVER_STARTING. Reload once the
         // save identity is available so the per-world layer becomes authoritative.

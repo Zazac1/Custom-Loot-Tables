@@ -146,8 +146,7 @@ final class LoadedLootTablesScreen extends StyledScreen {
         ButtonWidget restore = ButtonWidget.builder(Text.translatable("customloottables.preview.restore"),
                 button -> restoreOriginal()).tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.defaults.restore")))
                 .dimensions(x + buttonW + gap, actionY + 22, buttonW, 20).build();
-        restore.active = configScreen.hasTargetTable(selectedId)
-                || (!configScreen.isGlobalTarget() && configScreen.findGlobalTable(selectedId) != null);
+        restore.active = configScreen.hasTargetTable(selectedId);
         addDrawableChild(restore);
         addDrawable((ctx, mouseX, mouseY, delta) -> {
             CustomLootTableSprites.draw(ctx, CustomLootTableSprites.EYE, x + 2, TOP + 45, 16, 16);
@@ -209,7 +208,6 @@ final class LoadedLootTablesScreen extends StyledScreen {
 
     private void editSelected() {
         LootTableDefinition existing = configScreen.findTargetTable(selectedId);
-        if (existing == null && configScreen.isInherited(selectedId)) existing = configScreen.createWorldOverride(selectedId);
         if (existing != null) {
             client.setScreen(new LootTableEditorScreen(configScreen, this, existing));
             return;
@@ -327,10 +325,9 @@ final class LoadedLootTablesScreen extends StyledScreen {
             context.drawTextWithShadow(textRenderer, label, textX, y + 6,
                     configured ? ScreenStyle.GREEN : ScreenStyle.TEXT);
             if (configured) context.drawTextWithShadow(textRenderer,
-                    configScreen.isOriginalRestored(id) ? "ORIGINAL" : configScreen.isInherited(id) ? "GLOBAL" : "EDIT",
+                    configScreen.isOriginalRestored(id) ? "ORIGINAL" : "EDIT",
                     scrollbarX() - 50, y + 6,
-                    configScreen.isOriginalRestored(id) ? ScreenStyle.MUTED
-                            : configScreen.isInherited(id) ? 0xFF55FFFF : ScreenStyle.GREEN);
+                    configScreen.isOriginalRestored(id) ? ScreenStyle.MUTED : ScreenStyle.GREEN);
         }
         renderScrollbar(context, ids.size());
         renderPreview(context, mouseX, mouseY);
@@ -348,7 +345,7 @@ final class LoadedLootTablesScreen extends StyledScreen {
         LootTableDefinition configured = configScreen.findEffectiveTable(selectedId);
         String statusText = configured == null ? Text.translatable("customloottables.preview.unmodified").getString()
                 : configScreen.isOriginalRestored(selectedId) ? Text.translatable("customloottables.preview.restored").getString()
-                : configured.mode.toUpperCase(Locale.ROOT) + (configScreen.isInherited(selectedId) ? " · GLOBAL" : "");
+                : configured.mode.toUpperCase(Locale.ROOT);
         context.drawCenteredTextWithShadow(textRenderer, statusText, center, TOP + 21,
                 configured == null ? ScreenStyle.MUTED : ScreenStyle.GREEN);
         if (previewLoading) {

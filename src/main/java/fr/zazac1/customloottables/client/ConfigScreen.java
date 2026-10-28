@@ -53,6 +53,7 @@ public final class ConfigScreen extends StyledScreen {
         this.activeWorldId = activeWorldId == null ? "" : activeWorldId;
         this.activeWorldName = activeWorldName == null || activeWorldName.isBlank() ? "Current world" : activeWorldName;
         ClientInit.setEditorAutomaticGuiScale(this.config.automatic_gui_scale);
+        if (!serverManaged) ConfigLoader.synchronizeAutomaticLibraryTables(this.config);
         chooseInitialTarget();
         this.initialJson = ConfigLoader.toJson(this.config);
     }
@@ -228,17 +229,21 @@ public final class ConfigScreen extends StyledScreen {
     }
 
     LootTableDefinition findEffectiveTable(String id) {
-        LootTableDefinition local = findTargetTable(id);
-        return local != null ? local : findGlobalTable(id);
+        return findTargetTable(id);
     }
 
     boolean isInherited(String id) {
-        return !isGlobalTarget() && findTargetTable(id) == null && findGlobalTable(id) != null;
+        return false;
     }
 
     void addTable(LootTableDefinition definition) { if (definition != null) tables().add(definition); }
 
     void replaceTable(LootTableDefinition original, LootTableDefinition replacement) {
+        if (!isGlobalTarget() && replacement != null) {
+            // Editing an automatically added copy turns it into an independent world table.
+            replacement.global_auto_add = null;
+            replacement.global_library_source_id = null;
+        }
         int index = tables().indexOf(original);
         if (index >= 0) tables().set(index, replacement); else tables().add(replacement);
     }
@@ -253,43 +258,40 @@ public final class ConfigScreen extends StyledScreen {
 
     void restoreOriginal(String id) {
         LootTableDefinition local = findTargetTable(id);
-        if (isGlobalTarget()) {
-            if (local != null) deleteTable(local);
-            return;
+        if (local == null) return;
+        if (!isGlobalTarget() && local.global_library_source_id != null
+                && !local.global_library_source_id.isBlank()) {
+            // Keep the managed All Worlds copy so synchronization does not recreate
+            // it immediately, but disable its gameplay effect for this one world.
+            local.enabled = false;
+        } else {
+            deleteTable(local);
         }
-        LootTableDefinition global = findGlobalTable(id);
-        if (global == null) {
-            if (local != null) deleteTable(local);
-            return;
-        }
-        LootTableDefinition blocker = local == null ? new LootTableDefinition() : local;
-        blocker.id = id;
-        blocker.type = global.type;
-        blocker.mode = "append";
-        blocker.enabled = false;
-        blocker.entries.clear();
-        if (local == null) addTable(blocker);
     }
 
     LootTableDefinition createWorldOverride(String id) {
-        LootTableDefinition inherited = findGlobalTable(id);
-        if (inherited == null || isGlobalTarget()) return null;
-        LootTableDefinition copy = inherited.copy();
-        tables().add(copy);
-        return copy;
+        return null;
     }
 
     int importableGlobalCount() {
         if (isGlobalTarget()) return 0;
-        return (int) config.global_config.loot_tables.stream().filter(table -> findTargetTable(table.id) == null).count();
+        return ConfigLoader.previewGlobalLibraryImport(config, tables()).added();
     }
 
-    void importAllFromGlobal() {
-        if (isGlobalTarget()) return;
-        for (LootTableDefinition table : config.global_config.loot_tables) {
-            if (findTargetTable(table.id) == null) tables().add(table.copy());
-        }
-        client.setScreen(new LootTablesScreen(this));
+    ConfigLoader.LibraryImportResult importAllFromGlobal() {
+        if (isGlobalTarget()) return new ConfigLoader.LibraryImportResult(0, 0);
+        return ConfigLoader.importGlobalLibraryToWorld(config, targetWorldId, targetWorldName);
+    }
+
+    boolean importFromGlobal(LootTableDefinition source) {
+        if (isGlobalTarget()) return false;
+        return ConfigLoader.importGlobalTableToWorld(config, targetWorldId, targetWorldName, source);
+    }
+
+    void toggleGlobalAutoAdd(LootTableDefinition table) {
+        if (!isGlobalTarget() || table == null) return;
+        table.global_auto_add = !Boolean.TRUE.equals(table.global_auto_add);
+        ConfigLoader.synchronizeAutomaticLibraryTables(config);
     }
 
     void duplicateTable(LootTableDefinition source) {
@@ -299,6 +301,8 @@ public final class ConfigScreen extends StyledScreen {
         copy.id = base;
         int suffix = 2;
         while (hasTargetTable(copy.id)) copy.id = base + suffix++;
+        copy.global_auto_add = null;
+        copy.global_library_source_id = null;
         tables().add(copy);
     }
 
@@ -315,6 +319,7 @@ public final class ConfigScreen extends StyledScreen {
         WindowsFileDialogs.openJson(path -> {
             try {
                 config = ConfigLoader.importFrom(path);
+                if (!serverManaged) ConfigLoader.synchronizeAutomaticLibraryTables(config);
                 chooseInitialTarget();
                 clearAndInit();
                 announce(Text.translatable("customloottables.chat.imported"));

@@ -6,12 +6,13 @@ import java.util.List;
 import java.util.Map;
 
 public final class ModConfig {
-    public int config_version = 3;
-    public int loot_target_version = 2;
+    public int config_version = 4;
+    public int loot_target_version = 3;
     public boolean automatic_gui_scale = true;
     public boolean preload_loot_tables_on_startup = true;
     public String default_editor_target_id = "global";
-    public String default_editor_target_name = "Global configuration";
+    public String default_editor_target_name = "Global Library";
+    /** Reusable library. Only entries marked All Worlds are synchronized to local worlds. */
     public LootTargetConfig global_config = new LootTargetConfig();
     public Map<String, LootTargetConfig> world_configs = new LinkedHashMap<>();
     public Map<String, String> world_names = new LinkedHashMap<>();

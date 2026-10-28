@@ -145,17 +145,129 @@ public final class ConfigLoader {
         }
     }
 
-    /** Global definitions apply everywhere; a same-ID world definition overrides or disables one. */
+    /** Runtime loot tables belong only to the active world. The global target is a reusable library. */
     public static List<LootTableDefinition> effectiveTables(ModConfig config, String worldId) {
         // Configurations returned by get() are normalized before publication. Do not
         // mutate that shared object here: loot tables may be built concurrently by
         // Minecraft's resource-reload workers.
         ModConfig normalized = config == null ? new ModConfig() : config;
-        Map<String, LootTableDefinition> effective = new LinkedHashMap<>();
-        for (LootTableDefinition table : normalized.global_config.loot_tables) effective.put(table.id, table);
         LootTargetConfig world = normalized.findWorldConfig(worldId);
-        if (world != null) for (LootTableDefinition table : world.loot_tables) effective.put(table.id, table);
-        return new ArrayList<>(effective.values());
+        return world == null ? new ArrayList<>() : new ArrayList<>(world.loot_tables);
+    }
+
+    /** Counts Global Library tables that can be copied without replacing a world table. */
+    public static LibraryImportResult previewGlobalLibraryImport(ModConfig config,
+                                                                  List<LootTableDefinition> targetTables) {
+        if (config == null || config.global_config == null) return new LibraryImportResult(0, 0);
+        return countMissingTables(config.global_config.loot_tables, targetTables);
+    }
+
+    /** Copies every missing Global Library table into one isolated world target. */
+    public static LibraryImportResult importGlobalLibraryToWorld(ModConfig config, String worldId,
+                                                                  String worldName) {
+        if (config == null || config.global_config == null || worldId == null || worldId.isBlank()) {
+            return new LibraryImportResult(0, 0);
+        }
+        return importMissingTables(config.global_config.loot_tables,
+                config.getOrCreateWorldConfig(worldId, worldName));
+    }
+
+    /** Copies one library table as an independent world table. */
+    public static boolean importGlobalTableToWorld(ModConfig config, String worldId, String worldName,
+                                                    LootTableDefinition source) {
+        if (config == null || source == null || worldId == null || worldId.isBlank()) return false;
+        LootTargetConfig target = config.getOrCreateWorldConfig(worldId, worldName);
+        if (target.loot_tables.stream().anyMatch(existing -> existing.id.equals(source.id))) return false;
+        LootTableDefinition copy = source.copy();
+        copy.enabled = true;
+        copy.global_auto_add = null;
+        copy.global_library_source_id = null;
+        target.loot_tables.add(copy);
+        return true;
+    }
+
+    /** Ensures a newly opened local world receives every library table marked All Worlds. */
+    public static void ensureAutomaticLibraryTablesForWorld(String worldId, String worldName) {
+        if (worldId == null || worldId.isBlank()) return;
+        ModConfig config = get();
+        boolean created = config.findWorldConfig(worldId) == null;
+        LootTargetConfig world = config.getOrCreateWorldConfig(worldId, worldName);
+        boolean changed = synchronizeAutomaticLibraryTables(config, world);
+        if (created || changed) saveAndInvalidate(config);
+    }
+
+    /** Synchronizes All Worlds copies for every local world already known by the editor. */
+    public static void synchronizeAutomaticLibraryTables(ModConfig config) {
+        if (config == null || config.world_configs == null) return;
+        for (LootTargetConfig world : config.world_configs.values()) {
+            synchronizeAutomaticLibraryTables(config, world);
+        }
+    }
+
+    private static boolean synchronizeAutomaticLibraryTables(ModConfig config, LootTargetConfig target) {
+        if (config == null || config.global_config == null || target == null) return false;
+        if (target.loot_tables == null) target.loot_tables = new ArrayList<>();
+
+        Map<String, LootTableDefinition> automatic = new LinkedHashMap<>();
+        for (LootTableDefinition table : config.global_config.loot_tables) {
+            if (table != null && table.id != null && !table.id.isBlank()
+                    && Boolean.TRUE.equals(table.global_auto_add)) automatic.put(table.id, table);
+        }
+
+        int previousSize = target.loot_tables.size();
+        target.loot_tables.removeIf(table -> table != null
+                && table.global_library_source_id != null
+                && !table.global_library_source_id.isBlank()
+                && !automatic.containsKey(table.global_library_source_id));
+        boolean changed = previousSize != target.loot_tables.size();
+
+        for (LootTableDefinition source : automatic.values()) {
+            boolean present = target.loot_tables.stream().anyMatch(existing -> existing != null
+                    && (source.id.equals(existing.global_library_source_id) || source.id.equals(existing.id)));
+            if (present) continue;
+            LootTableDefinition copy = source.copy();
+            copy.enabled = true;
+            copy.global_auto_add = null;
+            copy.global_library_source_id = source.id;
+            target.loot_tables.add(copy);
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static LibraryImportResult countMissingTables(List<LootTableDefinition> source,
+                                                           List<LootTableDefinition> target) {
+        if (source == null || source.isEmpty()) return new LibraryImportResult(0, 0);
+        List<LootTableDefinition> known = target == null ? List.of() : target;
+        int added = 0;
+        int alreadyPresent = 0;
+        for (LootTableDefinition table : source) {
+            if (table == null) continue;
+            if (known.stream().anyMatch(existing -> existing.id.equals(table.id))) alreadyPresent++;
+            else added++;
+        }
+        return new LibraryImportResult(added, alreadyPresent);
+    }
+
+    private static LibraryImportResult importMissingTables(List<LootTableDefinition> source,
+                                                            LootTargetConfig target) {
+        if (source == null || source.isEmpty() || target == null) return new LibraryImportResult(0, 0);
+        int added = 0;
+        int alreadyPresent = 0;
+        for (LootTableDefinition table : source) {
+            if (table == null) continue;
+            if (target.loot_tables.stream().anyMatch(existing -> existing.id.equals(table.id))) {
+                alreadyPresent++;
+                continue;
+            }
+            LootTableDefinition copy = table.copy();
+            copy.enabled = true;
+            copy.global_auto_add = null;
+            copy.global_library_source_id = null;
+            target.loot_tables.add(copy);
+            added++;
+        }
+        return new LibraryImportResult(added, alreadyPresent);
     }
 
     public static LootTargetConfig target(ModConfig config, String worldId, String worldName) {
@@ -196,7 +308,7 @@ public final class ConfigLoader {
     private static ModConfig normalize(ModConfig config) {
         if (config == null) config = new ModConfig();
         int previousVersion = config.config_version;
-        config.config_version = 3;
+        config.config_version = 4;
         if (config.loot_tables == null) config.loot_tables = new ArrayList<>();
         if (config.global_config == null) config.global_config = new LootTargetConfig();
         if (config.world_configs == null) config.world_configs = new LinkedHashMap<>();
@@ -207,22 +319,44 @@ public final class ConfigLoader {
             config.loot_tables = new ArrayList<>();
             config.loot_target_version = 2;
         }
+        // Version 2 treated global entries as live definitions in every world.
+        // Preserve that behaviour during migration by marking them All Worlds;
+        // users can later turn individual entries back into library-only templates.
+        if (config.loot_target_version < 3) {
+            for (LootTableDefinition table : config.global_config.loot_tables) {
+                if (table != null && table.global_auto_add == null) {
+                    table.global_auto_add = table.enabled ? Boolean.TRUE : Boolean.FALSE;
+                }
+            }
+            config.loot_target_version = 3;
+        }
         if (config.default_editor_target_id == null || config.default_editor_target_id.isBlank()) {
             config.default_editor_target_id = "global";
         }
         if (config.default_editor_target_name == null || config.default_editor_target_name.isBlank()) {
-            config.default_editor_target_name = "Global configuration";
+            config.default_editor_target_name = "Global Library";
         }
         if (previousVersion < 3 && "current".equals(config.default_editor_target_id)) {
             config.default_editor_target_id = "global";
-            config.default_editor_target_name = "Global configuration";
+            config.default_editor_target_name = "Global Library";
         }
         normalizeTarget(config.global_config);
+        normalizeLibraryTables(config.global_config);
         config.world_configs.entrySet().removeIf(entry -> entry.getKey() == null || entry.getKey().isBlank()
                 || entry.getValue() == null);
         config.world_configs.values().forEach(ConfigLoader::normalizeTarget);
         config.world_names.keySet().retainAll(new LinkedHashSet<>(config.world_configs.keySet()));
         return config;
+    }
+
+    /** Global Library entries are templates, not directly enabled/disabled runtime entries. */
+    private static void normalizeLibraryTables(LootTargetConfig library) {
+        if (library == null || library.loot_tables == null) return;
+        for (LootTableDefinition table : library.loot_tables) {
+            if (table == null) continue;
+            table.enabled = true;
+            table.global_library_source_id = null;
+        }
     }
 
     private static void normalizeTarget(LootTargetConfig target) {
@@ -253,4 +387,6 @@ public final class ConfigLoader {
     }
 
     private ConfigLoader() {}
+
+    public record LibraryImportResult(int added, int alreadyPresent) {}
 }

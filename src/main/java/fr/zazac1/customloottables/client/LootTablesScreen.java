@@ -27,6 +27,8 @@ final class LootTablesScreen extends StyledScreen {
     private static final int DETAIL_H = 86;
 
     private final ConfigScreen configScreen;
+    /** Reuses the table view as the read-only Global Library picker for a world. */
+    private final boolean libraryPicker;
     private TextFieldWidget search;
     private ButtonWidget editButton;
     private ButtonWidget duplicateButton;
@@ -37,8 +39,14 @@ final class LootTablesScreen extends StyledScreen {
     private boolean draggingScrollbar;
 
     LootTablesScreen(ConfigScreen configScreen) {
-        super(Text.translatable("customloottables.tables.title"));
+        this(configScreen, false);
+    }
+
+    LootTablesScreen(ConfigScreen configScreen, boolean libraryPicker) {
+        super(Text.translatable(libraryPicker
+                ? "customloottables.home.global_library" : "customloottables.tables.title"));
         this.configScreen = configScreen;
+        this.libraryPicker = libraryPicker;
     }
 
     private int tableLeft() { return PAD; }
@@ -74,22 +82,38 @@ final class LootTablesScreen extends StyledScreen {
         addDrawableChild(search);
 
         int footerWidth = Math.min(220, width - 24);
-        addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.button.add_table"), button ->
-                        client.setScreen(new LootTableEditorScreen(configScreen, this, null)))
-                .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.add")))
-                .dimensions(width / 2 - footerWidth / 2, footerAddY(), footerWidth, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.button.save"), button -> configScreen.save())
-                .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.save")))
-                .dimensions(width / 2 - footerWidth / 2, footerSaveY(), footerWidth, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.button.back"), button -> close())
-                .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.back")))
-                .dimensions(PAD, footerSaveY(), Math.min(86, Math.max(54, width / 6)), 20).build());
-
-        if (!configScreen.isGlobalTarget() && configScreen.importableGlobalCount() > 0) {
-            addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.home.import_global_short"), button ->
-                            configScreen.importAllFromGlobal())
+        if (libraryPicker) {
+            int importable = configScreen.importableGlobalCount();
+            ButtonWidget addAll = ButtonWidget.builder(
+                            Text.translatable("customloottables.library.add_all"), button ->
+                                    client.setScreen(new ImportGlobalLootLibraryScreen(
+                                            configScreen, this, importable)))
                     .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.import_global")))
-                    .dimensions(width - PAD - Math.min(130, width / 4), footerSaveY(), Math.min(130, width / 4), 20).build());
+                    .dimensions(width / 2 - footerWidth / 2, footerAddY(), footerWidth, 20).build();
+            addAll.active = importable > 0;
+            addDrawableChild(addAll);
+            addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.library.back_to_world"),
+                            button -> close())
+                    .dimensions(width / 2 - footerWidth / 2, footerSaveY(), footerWidth, 20).build());
+        } else {
+            addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.button.add_table"), button ->
+                            client.setScreen(new LootTableEditorScreen(configScreen, this, null)))
+                    .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.add")))
+                    .dimensions(width / 2 - footerWidth / 2, footerAddY(), footerWidth, 20).build());
+            addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.button.save"), button -> configScreen.save())
+                    .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.save")))
+                    .dimensions(width / 2 - footerWidth / 2, footerSaveY(), footerWidth, 20).build());
+            addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.button.back"), button -> close())
+                    .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.back")))
+                    .dimensions(PAD, footerSaveY(), Math.min(86, Math.max(54, width / 6)), 20).build());
+
+            if (!configScreen.isGlobalTarget() && !configScreen.serverManaged()) {
+                addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.library.add_from_global"),
+                                button -> client.setScreen(new LootTablesScreen(configScreen, true)))
+                        .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.open_global")))
+                        .dimensions(width - PAD - Math.min(150, width / 4), footerSaveY(),
+                                Math.min(150, width / 4), 20).build());
+            }
         }
 
         RowData selected = selectedRow();
@@ -97,9 +121,14 @@ final class LootTablesScreen extends StyledScreen {
         int actionW = Math.max(54, Math.min(110, (tableRight() - tableLeft() - 16) / 3));
         int actionsW = actionW * 3 + 8;
         int actionX = width / 2 - actionsW / 2;
-        editButton = addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.preview.edit"), button -> editSelected())
-                .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.edit")))
-                .dimensions(actionX, actionY, actionW, 20).build());
+        int primaryActionW = libraryPicker ? Math.min(198, width - 40) : actionW;
+        int primaryActionX = libraryPicker ? width / 2 - primaryActionW / 2 : actionX;
+        editButton = addDrawableChild(ButtonWidget.builder(Text.translatable(libraryPicker
+                        ? "customloottables.library.add_selected" : "customloottables.preview.edit"), button -> editSelected())
+                .tooltip(Tooltip.of(Text.translatable(libraryPicker
+                        ? "customloottables.tooltip.library.add_selected"
+                        : "customloottables.tooltip.library.edit")))
+                .dimensions(primaryActionX, actionY, primaryActionW, 20).build());
         duplicateButton = addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.button.duplicate"), button -> duplicateSelected())
                 .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.duplicate")))
                 .dimensions(actionX + actionW + 4, actionY, actionW, 20).build());
@@ -107,19 +136,34 @@ final class LootTablesScreen extends StyledScreen {
                 .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.toggle")))
                 .dimensions(actionX + (actionW + 4) * 2, actionY, actionW, 20).build());
         boolean hasSelection = selected != null;
-        editButton.visible = duplicateButton.visible = toggleButton.visible = hasSelection;
-        editButton.active = duplicateButton.active = toggleButton.active = hasSelection;
-        if (hasSelection) toggleButton.setMessage(Text.translatable(selected.table().enabled
-                ? "customloottables.builder.disabled_short" : "customloottables.builder.enabled_short"));
+        editButton.visible = hasSelection;
+        editButton.active = hasSelection;
+        duplicateButton.visible = toggleButton.visible = hasSelection && !libraryPicker;
+        duplicateButton.active = toggleButton.active = hasSelection && !libraryPicker;
+        if (hasSelection && !libraryPicker) {
+            if (configScreen.isGlobalTarget()) {
+                toggleButton.setMessage(Text.translatable(Boolean.TRUE.equals(selected.table().global_auto_add)
+                        ? "customloottables.library.state.library" : "customloottables.library.state.all_worlds"));
+                toggleButton.setTooltip(Tooltip.of(Text.translatable(
+                        "customloottables.tooltip.library.all_worlds")));
+            } else {
+                toggleButton.setMessage(Text.translatable(selected.table().enabled
+                        ? "customloottables.builder.disabled_short" : "customloottables.builder.enabled_short"));
+            }
+        }
+    }
+
+    private List<LootTableDefinition> displayedTables() {
+        return libraryPicker ? configScreen.config().global_config.loot_tables : configScreen.tables();
     }
 
     private List<RowData> rows() {
         String lowered = query.strip().toLowerCase(Locale.ROOT);
         List<RowData> result = new ArrayList<>();
         // Like Custom Recipes, a world's library contains only definitions stored
-        // in that world. Global definitions still apply at runtime, but stay in the
-        // Global Library until the user explicitly imports/copies them here.
-        for (LootTableDefinition table : configScreen.tables()) result.add(new RowData(table));
+        // in that world. Global templates stay in the Global Library until they are
+        // copied manually or synchronized through the explicit All Worlds state.
+        for (LootTableDefinition table : displayedTables()) result.add(new RowData(table));
         return result.stream().filter(row -> lowered.isEmpty()
                 || row.table().id.toLowerCase(Locale.ROOT).contains(lowered)
                 || row.table().mode.toLowerCase(Locale.ROOT).contains(lowered)
@@ -137,10 +181,17 @@ final class LootTablesScreen extends StyledScreen {
 
     private void editSelected() {
         LootTableDefinition table = editable(selectedRow());
-        if (table != null) client.setScreen(new LootTableEditorScreen(configScreen, this, table));
+        if (table == null) return;
+        if (libraryPicker) {
+            configScreen.importFromGlobal(table);
+            client.setScreen(new LootTablesScreen(configScreen));
+        } else {
+            client.setScreen(new LootTableEditorScreen(configScreen, this, table));
+        }
     }
 
     private void duplicateSelected() {
+        if (libraryPicker) return;
         RowData row = selectedRow();
         if (row == null) return;
         configScreen.duplicateTable(row.table());
@@ -150,13 +201,14 @@ final class LootTablesScreen extends StyledScreen {
 
     private void toggleSelected() {
         LootTableDefinition table = editable(selectedRow());
-        if (table == null) return;
-        table.enabled = !table.enabled;
+        if (table == null || libraryPicker) return;
+        if (configScreen.isGlobalTarget()) configScreen.toggleGlobalAutoAdd(table);
+        else table.enabled = !table.enabled;
         clearAndInit();
     }
 
     private void delete(RowData row) {
-        if (row == null) return;
+        if (row == null || libraryPicker) return;
         configScreen.deleteTable(row.table());
         if (row.table().id.equals(selectedId)) selectedId = null;
         scroll = Math.min(scroll, maxScroll());
@@ -182,7 +234,10 @@ final class LootTablesScreen extends StyledScreen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         super.render(context, mouseX, mouseY, delta);
-        LootTargetBadge.draw(context, client, configScreen, configScreen.targetBadgeLabel());
+        LootTargetBadge.draw(context, client, configScreen,
+                libraryPicker ? Text.translatable("customloottables.home.global_library").getString()
+                        : configScreen.targetBadgeLabel(),
+                libraryPicker || configScreen.isGlobalTarget());
         Text found = Text.translatable("customloottables.library.found", rows().size());
         context.drawTextWithShadow(textRenderer, found,
                 Math.max(tableLeft(), tableRight() - textRenderer.getWidth(found)), 18, 0xFFFFFF55);
@@ -194,7 +249,7 @@ final class LootTablesScreen extends StyledScreen {
                 scroll, maxScroll(), draggingScrollbar);
         CustomLootTableSprites.draw(context, CustomLootTableSprites.ADD,
                 width / 2 - Math.min(220, width - 24) / 2 + 3, footerAddY() + 1, 18, 18);
-        CustomLootTableSprites.draw(context, CustomLootTableSprites.SAVE,
+        if (!libraryPicker) CustomLootTableSprites.draw(context, CustomLootTableSprites.SAVE,
                 width / 2 - Math.min(220, width - 24) / 2 + 3, footerSaveY() + 1, 18, 18);
     }
 
@@ -208,7 +263,8 @@ final class LootTablesScreen extends StyledScreen {
                 (statusRight() + modeRight()) / 2, y, ScreenStyle.MUTED);
         context.drawTextWithShadow(textRenderer, Text.translatable("customloottables.library.column.table"),
                 modeRight() + 6, y, ScreenStyle.MUTED);
-        context.drawCenteredTextWithShadow(textRenderer, Text.translatable("customloottables.library.column.state"),
+        context.drawCenteredTextWithShadow(textRenderer, Text.translatable(libraryPicker
+                        ? "customloottables.library.column.add" : "customloottables.library.column.state"),
                 (stateX() + scrollbarX()) / 2, y, ScreenStyle.MUTED);
         context.drawVerticalLine(iconRight(), HEADER_Y, rowsBottom() - 1, 0xFF414B4A);
         context.drawVerticalLine(statusRight(), HEADER_Y, rowsBottom() - 1, 0xFF414B4A);
@@ -231,23 +287,31 @@ final class LootTablesScreen extends StyledScreen {
             boolean selected = row.table().id.equals(selectedId);
             boolean hovered = mouseX >= tableLeft() && mouseX < scrollbarX()
                     && mouseY >= y && mouseY < y + ROW_H;
-            int color = !row.table().enabled ? 0x664A2525 : 0x66304830;
+            boolean active = libraryPicker || configScreen.isGlobalTarget() || row.table().enabled;
+            int color = !active ? 0x664A2525 : 0x66304830;
             if (hovered) color |= 0x22000000;
             context.fill(tableLeft() + 1, y, scrollbarX(), y + ROW_H - 1, color);
             if (selected) context.drawBorder(tableLeft() + 1, y, scrollbarX() - tableLeft() - 1, ROW_H - 1, 0xFFFFFFFF);
 
             drawFirstItem(context, row.table(), tableLeft() + 12, y + 4);
-            CustomLootTableSprites.draw(context, row.table().enabled ? CustomLootTableSprites.ACCEPT
+            CustomLootTableSprites.draw(context, active ? CustomLootTableSprites.ACCEPT
                     : CustomLootTableSprites.REJECT, iconRight() + 16, y + 3, 18, 18);
             context.drawCenteredTextWithShadow(textRenderer, row.table().mode.toUpperCase(Locale.ROOT),
                     (statusRight() + modeRight()) / 2, y + 8, ScreenStyle.TEXT);
             context.drawTextWithShadow(textRenderer, trim(row.table().id, stateX() - modeRight() - 12),
                     modeRight() + 6, y + 8, ScreenStyle.TEXT);
-            String state = Text.translatable(configScreen.isGlobalTarget()
-                    ? "customloottables.library.state.global" : "customloottables.library.state.world").getString();
+            String state = Text.translatable(libraryPicker
+                    ? "customloottables.library.add"
+                    : configScreen.isGlobalTarget()
+                            ? (Boolean.TRUE.equals(row.table().global_auto_add)
+                                    ? "customloottables.library.state.all_worlds"
+                                    : "customloottables.library.state.library")
+                            : "customloottables.library.state.world").getString();
             context.drawCenteredTextWithShadow(textRenderer, trim(state, scrollbarX() - stateX() - 8),
-                    (stateX() + scrollbarX()) / 2, y + 8, ScreenStyle.GREEN);
-            CustomLootTableSprites.draw(context, CustomLootTableSprites.REJECT,
+                    (stateX() + scrollbarX()) / 2, y + 8,
+                    !libraryPicker && configScreen.isGlobalTarget()
+                            && !Boolean.TRUE.equals(row.table().global_auto_add) ? 0xFF77BBFF : ScreenStyle.GREEN);
+            if (!libraryPicker) CustomLootTableSprites.draw(context, CustomLootTableSprites.REJECT,
                     deleteX() + 1, y + 3, 18, 18);
         }
     }
@@ -305,15 +369,28 @@ final class LootTablesScreen extends StyledScreen {
         }
         List<RowData> data = rows();
         int rowIndex = ((int) mouseY - rowsTop()) / ROW_H;
-        if (button == 0 && mouseX >= tableLeft() && mouseX < scrollbarX()
+        if (button == 0 && mouseX >= tableLeft() && mouseX < tableRight()
+                && !(mouseX >= scrollbarX() && mouseX < deleteX())
                 && mouseY >= rowsTop() && mouseY < rowsBottom()
                 && rowIndex >= 0 && rowIndex < visibleRows() && scroll + rowIndex < data.size()) {
             RowData row = data.get(scroll + rowIndex);
-            if (mouseX >= deleteX()) {
+            if (!libraryPicker && mouseX >= deleteX()) {
                 delete(row);
                 return true;
             }
-            if (mouseX >= iconRight() && mouseX < statusRight()) {
+            if (libraryPicker && mouseX >= stateX() && mouseX < scrollbarX()) {
+                configScreen.importFromGlobal(row.table());
+                client.setScreen(new LootTablesScreen(configScreen));
+                return true;
+            }
+            if (!libraryPicker && configScreen.isGlobalTarget()
+                    && mouseX >= stateX() && mouseX < scrollbarX()) {
+                selectedId = row.table().id;
+                toggleSelected();
+                return true;
+            }
+            if (!libraryPicker && !configScreen.isGlobalTarget()
+                    && mouseX >= iconRight() && mouseX < statusRight()) {
                 selectedId = row.table().id;
                 toggleSelected();
                 return true;
@@ -354,6 +431,8 @@ final class LootTablesScreen extends StyledScreen {
         scroll = RecipeStyleScrollBar.valueFromMouse(mouseY, rowsTop(), rowsBottom() - rowsTop(), maxScroll());
     }
 
-    @Override public void close() { client.setScreen(configScreen); }
+    @Override public void close() {
+        client.setScreen(libraryPicker ? new LootTablesScreen(configScreen) : configScreen);
+    }
     private record RowData(LootTableDefinition table) {}
 }

@@ -72,38 +72,109 @@ final class CustomLootTablesRegressionTest {
         ModConfig migrated = ConfigLoader.fromJson(legacy);
 
         assertNotNull(migrated);
-        assertEquals(3, migrated.config_version);
-        assertEquals(2, migrated.loot_target_version);
+        assertEquals(4, migrated.config_version);
+        assertEquals(3, migrated.loot_target_version);
         assertTrue(migrated.loot_tables.isEmpty());
         assertEquals(1, migrated.global_config.loot_tables.size());
         assertEquals("minecraft:chests/simple_dungeon", migrated.global_config.loot_tables.getFirst().id);
+        assertTrue(Boolean.TRUE.equals(migrated.global_config.loot_tables.getFirst().global_auto_add),
+                "Tables from the old always-global model must keep applying after migration");
     }
 
     @Test
-    void worldDefinitionsOverrideOrDisableGlobalDefinitions() {
+    void disabledLegacyGlobalTableBecomesLibraryOnly() {
+        String legacy = """
+                {
+                  "config_version": 3,
+                  "loot_target_version": 2,
+                  "global_config": {"loot_tables": [{
+                    "id": "minecraft:chests/simple_dungeon",
+                    "mode": "append",
+                    "type": "chest",
+                    "enabled": false,
+                    "rolls": 1,
+                    "entries": [{"item_id":"minecraft:diamond","weight":1,"min_count":1,"max_count":1}]
+                  }]}
+                }
+                """;
+
+        ModConfig migrated = ConfigLoader.fromJson(legacy);
+
+        assertNotNull(migrated);
+        LootTableDefinition table = migrated.global_config.loot_tables.getFirst();
+        assertTrue(table.enabled, "Global Library templates must remain usable");
+        assertFalse(Boolean.TRUE.equals(table.global_auto_add),
+                "A formerly disabled global table must not start affecting every world");
+    }
+
+    @Test
+    void globalLibraryStaysSeparateAndAllWorldsCopiesAreManaged() {
         ModConfig config = new ModConfig();
-        LootTableDefinition globalDungeon = table("minecraft:chests/simple_dungeon", "append", true,
+        LootTableDefinition libraryOnly = table("minecraft:chests/simple_dungeon", "append", true,
                 entry("minecraft:diamond", 1, 1, 1));
-        LootTableDefinition globalVillage = table("minecraft:chests/village/village_plains_house", "append", true,
+        LootTableDefinition allWorlds = table("minecraft:chests/village/village_plains_house", "append", true,
                 entry("minecraft:bread", 1, 1, 2));
-        config.global_config.loot_tables.add(globalDungeon);
-        config.global_config.loot_tables.add(globalVillage);
+        allWorlds.global_auto_add = true;
+        config.global_config.loot_tables.add(libraryOnly);
+        config.global_config.loot_tables.add(allWorlds);
 
         LootTargetConfig world = config.getOrCreateWorldConfig("world-test", "Test World");
-        LootTableDefinition disabledOverride = globalDungeon.copy();
-        disabledOverride.enabled = false;
         LootTableDefinition worldOnly = table("minecraft:chests/shipwreck_treasure", "replace", true,
                 entry("minecraft:emerald", 1, 2, 4));
-        world.loot_tables.add(disabledOverride);
         world.loot_tables.add(worldOnly);
+        ConfigLoader.synchronizeAutomaticLibraryTables(config);
 
         var effective = ConfigLoader.effectiveTables(config, "world-test");
 
-        assertEquals(3, effective.size());
-        assertSame(disabledOverride, effective.getFirst(), "The disabled world entry must suppress the global entry");
-        assertFalse(effective.getFirst().enabled);
-        assertSame(globalVillage, effective.get(1));
-        assertSame(worldOnly, effective.get(2));
+        assertEquals(2, effective.size());
+        assertSame(worldOnly, effective.getFirst());
+        LootTableDefinition automaticCopy = effective.get(1);
+        assertEquals(allWorlds.id, automaticCopy.id);
+        assertEquals(allWorlds.id, automaticCopy.global_library_source_id);
+        assertTrue(effective.stream().noneMatch(table -> table.id.equals(libraryOnly.id)),
+                "A library-only table must never affect gameplay by itself");
+
+        assertTrue(ConfigLoader.importGlobalTableToWorld(config, "world-test", "Test World", libraryOnly));
+        assertNull(world.loot_tables.get(2).global_library_source_id,
+                "A manually imported table must be independent from All Worlds");
+
+        allWorlds.global_auto_add = false;
+        ConfigLoader.synchronizeAutomaticLibraryTables(config);
+        assertEquals(2, ConfigLoader.effectiveTables(config, "world-test").size(),
+                "Turning All Worlds off must remove only the managed copy");
+        assertTrue(ConfigLoader.effectiveTables(config, "world-test").stream()
+                .anyMatch(table -> table.id.equals(libraryOnly.id)),
+                "Turning All Worlds off must keep independent manual imports");
+    }
+
+    @Test
+    void worldCanImportOneOrAllLibraryTablesWithoutOverwritingLocalTables() {
+        ModConfig config = new ModConfig();
+        LootTableDefinition libraryDungeon = table("minecraft:chests/simple_dungeon", "append", true,
+                entry("minecraft:diamond", 1, 1, 1));
+        LootTableDefinition libraryVillage = table("minecraft:chests/village/village_plains_house", "append", true,
+                entry("minecraft:bread", 1, 1, 2));
+        config.global_config.loot_tables.add(libraryDungeon);
+        config.global_config.loot_tables.add(libraryVillage);
+
+        LootTargetConfig world = config.getOrCreateWorldConfig("world-test", "Test World");
+        LootTableDefinition localDungeon = table(libraryDungeon.id, "replace", true,
+                entry("minecraft:emerald", 1, 3, 3));
+        world.loot_tables.add(localDungeon);
+
+        ConfigLoader.LibraryImportResult preview = ConfigLoader.previewGlobalLibraryImport(
+                config, world.loot_tables);
+        assertEquals(1, preview.added());
+        assertEquals(1, preview.alreadyPresent());
+
+        ConfigLoader.LibraryImportResult imported = ConfigLoader.importGlobalLibraryToWorld(
+                config, "world-test", "Test World");
+        assertEquals(1, imported.added());
+        assertEquals(1, imported.alreadyPresent());
+        assertSame(localDungeon, world.loot_tables.getFirst(), "The local table must not be overwritten");
+        assertEquals(libraryVillage.id, world.loot_tables.get(1).id);
+        assertNull(world.loot_tables.get(1).global_library_source_id,
+                "A manual import must remain independent from All Worlds synchronization");
     }
 
     @Test

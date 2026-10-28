@@ -24,10 +24,15 @@ final class LootTargetBadge {
     private static final Set<String> MISSING_WORLD_ICONS = new HashSet<>();
 
     static void draw(DrawContext context, MinecraftClient client, ConfigScreen screen, String label) {
+        draw(context, client, screen, label, screen.isGlobalTarget());
+    }
+
+    static void draw(DrawContext context, MinecraftClient client, ConfigScreen screen, String label,
+                     boolean globalTarget) {
         int x = 9;
         int y = 3;
         context.fill(x - 1, y - 1, x + 25, y + 25, 0xFF505050);
-        if (screen.isGlobalTarget()) {
+        if (globalTarget) {
             CustomLootTableSprites.drawWorldGlobe(context, x + 4, y + 4, 16, 16);
         } else {
             WorldIcon icon = worldIcon(client, screen.targetWorldId());
