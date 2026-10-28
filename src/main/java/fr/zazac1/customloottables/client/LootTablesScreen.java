@@ -59,10 +59,13 @@ final class LootTablesScreen extends StyledScreen {
     private int scrollbarX() { return deleteX() - RecipeStyleScrollBar.THUMB_WIDTH; }
     private int searchClearX() { return tableRight() - 20; }
     private int rowsTop() { return HEADER_Y + HEADER_H; }
+    private boolean showsGlobalLibraryButton() { return !libraryPicker && !configScreen.isGlobalTarget(); }
     private int footerSaveY() { return height - 24; }
     private int footerAddY() { return footerSaveY() - 24; }
-    private int detailY() { return footerAddY() - DETAIL_H - 4; }
-    private int rowsBottom() { return selectedRow() == null ? footerAddY() - 4 : detailY() - 4; }
+    private int footerLibraryY() { return footerAddY() - 24; }
+    private int footerTopY() { return showsGlobalLibraryButton() ? footerLibraryY() : footerAddY(); }
+    private int detailY() { return footerTopY() - DETAIL_H - 4; }
+    private int rowsBottom() { return selectedRow() == null ? footerTopY() - 4 : detailY() - 4; }
     private int visibleRows() { return Math.max(1, (rowsBottom() - rowsTop()) / ROW_H); }
     private int maxScroll() { return Math.max(0, rows().size() - visibleRows()); }
 
@@ -107,12 +110,11 @@ final class LootTablesScreen extends StyledScreen {
                     .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.back")))
                     .dimensions(PAD, footerSaveY(), Math.min(86, Math.max(54, width / 6)), 20).build());
 
-            if (!configScreen.isGlobalTarget() && !configScreen.serverManaged()) {
+            if (showsGlobalLibraryButton()) {
                 addDrawableChild(ButtonWidget.builder(Text.translatable("customloottables.library.add_from_global"),
                                 button -> client.setScreen(new LootTablesScreen(configScreen, true)))
                         .tooltip(Tooltip.of(Text.translatable("customloottables.tooltip.library.open_global")))
-                        .dimensions(width - PAD - Math.min(150, width / 4), footerSaveY(),
-                                Math.min(150, width / 4), 20).build());
+                        .dimensions(width / 2 - footerWidth / 2, footerLibraryY(), footerWidth, 20).build());
             }
         }
 
@@ -249,6 +251,8 @@ final class LootTablesScreen extends StyledScreen {
                 scroll, maxScroll(), draggingScrollbar);
         CustomLootTableSprites.draw(context, CustomLootTableSprites.ADD,
                 width / 2 - Math.min(220, width - 24) / 2 + 3, footerAddY() + 1, 18, 18);
+        if (showsGlobalLibraryButton()) context.drawItem(new ItemStack(Items.BOOKSHELF),
+                width / 2 - Math.min(220, width - 24) / 2 + 4, footerLibraryY() + 2);
         if (!libraryPicker) CustomLootTableSprites.draw(context, CustomLootTableSprites.SAVE,
                 width / 2 - Math.min(220, width - 24) / 2 + 3, footerSaveY() + 1, 18, 18);
     }

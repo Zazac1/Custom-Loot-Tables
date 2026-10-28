@@ -178,6 +178,36 @@ final class CustomLootTablesRegressionTest {
     }
 
     @Test
+    void serverDraftCanUseLocalLibraryWithoutImportingAllWorldsBehaviour() {
+        ModConfig serverDraft = new ModConfig();
+        LootTableDefinition serverCopy = table("minecraft:chests/simple_dungeon", "replace", true,
+                entry("minecraft:emerald", 1, 1, 1));
+        serverDraft.global_config.loot_tables.add(serverCopy);
+
+        ModConfig local = new ModConfig();
+        LootTableDefinition duplicate = table(serverCopy.id, "append", true,
+                entry("minecraft:diamond", 1, 1, 1));
+        LootTableDefinition reusable = table("minecraft:chests/shipwreck_treasure", "append", true,
+                entry("minecraft:gold_ingot", 1, 2, 4));
+        reusable.global_auto_add = true;
+        local.global_config.loot_tables.add(duplicate);
+        local.global_config.loot_tables.add(reusable);
+
+        int added = ConfigLoader.mergeGlobalLibraryTemplates(serverDraft, local);
+
+        assertEquals(1, added);
+        assertEquals(2, serverDraft.global_config.loot_tables.size());
+        assertSame(serverCopy, serverDraft.global_config.loot_tables.getFirst(),
+                "A server template with the same identifier must keep priority");
+        LootTableDefinition merged = serverDraft.global_config.loot_tables.get(1);
+        assertNotSame(reusable, merged);
+        assertEquals(reusable.id, merged.id);
+        assertFalse(Boolean.TRUE.equals(merged.global_auto_add),
+                "Local All Worlds metadata must never propagate to a dedicated server");
+        assertNull(merged.global_library_source_id);
+    }
+
+    @Test
     void copiedConfigurationsAreDeepAndIndependent() {
         ModConfig original = new ModConfig();
         original.global_config.loot_tables.add(table("minecraft:chests/simple_dungeon", "append", true,

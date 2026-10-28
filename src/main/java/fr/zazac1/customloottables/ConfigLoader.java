@@ -155,6 +155,36 @@ public final class ConfigLoader {
         return world == null ? new ArrayList<>() : new ArrayList<>(world.loot_tables);
     }
 
+    /**
+     * Makes the client's reusable library available in a server editor draft.
+     *
+     * <p>This mirrors Custom Recipe's server-editor merge: server entries keep priority and only missing
+     * templates are copied.  Automatic "All Worlds" state is deliberately removed because it belongs to
+     * local single-player saves and must never spread a template across dedicated servers.</p>
+     */
+    public static int mergeGlobalLibraryTemplates(ModConfig destination, ModConfig localConfig) {
+        if (destination == null || localConfig == null || localConfig.global_config == null) return 0;
+        if (destination.global_config == null) destination.global_config = new LootTargetConfig();
+        if (destination.global_config.loot_tables == null) destination.global_config.loot_tables = new ArrayList<>();
+
+        Set<String> knownIds = new HashSet<>();
+        for (LootTableDefinition existing : destination.global_config.loot_tables) {
+            if (existing != null && existing.id != null) knownIds.add(existing.id);
+        }
+
+        int added = 0;
+        for (LootTableDefinition source : localConfig.global_config.loot_tables) {
+            if (source == null || source.id == null || source.id.isBlank() || !knownIds.add(source.id)) continue;
+            LootTableDefinition copy = source.copy();
+            copy.enabled = true;
+            copy.global_auto_add = Boolean.FALSE;
+            copy.global_library_source_id = null;
+            destination.global_config.loot_tables.add(copy);
+            added++;
+        }
+        return added;
+    }
+
     /** Counts Global Library tables that can be copied without replacing a world table. */
     public static LibraryImportResult previewGlobalLibraryImport(ModConfig config,
                                                                   List<LootTableDefinition> targetTables) {

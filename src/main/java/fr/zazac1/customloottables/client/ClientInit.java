@@ -67,9 +67,11 @@ public final class ClientInit implements ClientModInitializer {
                 return;
             }
             if (data == null || data.config() == null) return;
+            var serverDraft = ConfigLoader.copy(data.config());
+            ConfigLoader.mergeGlobalLibraryTemplates(serverDraft, ConfigLoader.get());
             deferEditorOpen(() -> {
                 Screen parent = context.client().currentScreen;
-                context.client().setScreen(new ConfigScreen(parent, data.config(), data.loadedTableIds(), true,
+                context.client().setScreen(new ConfigScreen(parent, serverDraft, data.loadedTableIds(), true,
                         data.activeWorldId(), data.activeWorldName()));
             });
         });
