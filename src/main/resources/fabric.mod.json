@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "customloottables",
+  "version": "${version}",
+  "name": "Custom Loot Tables",
+  "description": "Create and manage Minecraft loot table additions and replacements from an in-game editor.",
+  "authors": ["Zazac1"],
+  "license": "MIT",
+  "icon": "assets/customloottables/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["fr.zazac1.customloottables.CustomLootTablesMod"],
+    "client": ["fr.zazac1.customloottables.client.ClientInit"],
+    "modmenu": ["fr.zazac1.customloottables.client.ModMenuIntegration"]
+  },
+  "mixins": ["customloottables.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "minecraft": "1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "modmenu": "*"
+  }
+}

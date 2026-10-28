@@ -1,0 +1,13 @@
+.gradle/
+.gradle-user/
+build/
+bin/
+out/
+run/
+run-client/
+run-server/
+.idea/
+*.iml
+*.ipr
+*.iws
+remappedSrc/
