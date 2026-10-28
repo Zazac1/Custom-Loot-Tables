@@ -5,6 +5,11 @@
   "name": "Custom Loot Tables",
   "description": "Create and manage Minecraft loot table additions and replacements from an in-game editor.",
   "authors": ["Zazac1"],
+  "contact": {
+    "homepage": "https://github.com/Zazac1/Custom-Loot-Tables",
+    "issues": "https://github.com/Zazac1/Custom-Loot-Tables/issues",
+    "sources": "https://github.com/Zazac1/Custom-Loot-Tables"
+  },
   "license": "MIT",
   "icon": "assets/customloottables/icon.png",
   "environment": "*",

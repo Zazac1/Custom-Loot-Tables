@@ -6,6 +6,8 @@ out/
 run/
 run-client/
 run-server/
+logs/
+crash-reports/
 .idea/
 *.iml
 *.ipr

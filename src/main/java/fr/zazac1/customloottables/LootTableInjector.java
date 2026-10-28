@@ -105,15 +105,24 @@ public final class LootTableInjector {
         Block block = blockForLootTable(tableId);
         if (block == null) return;
 
-        if (block.getDefaultState().contains(Properties.DOUBLE_BLOCK_HALF)) {
-            pool.conditionally(BlockStatePropertyLootCondition.builder(block).properties(
+        switch (multiBlockGuard(tableId)) {
+            case LOWER_HALF -> pool.conditionally(BlockStatePropertyLootCondition.builder(block).properties(
                     StatePredicate.Builder.create()
                             .exactMatch(Properties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.LOWER)));
-        } else if (block.getDefaultState().contains(Properties.BED_PART)) {
-            pool.conditionally(BlockStatePropertyLootCondition.builder(block).properties(
+            case BED_HEAD -> pool.conditionally(BlockStatePropertyLootCondition.builder(block).properties(
                     StatePredicate.Builder.create()
                             .exactMatch(Properties.BED_PART, BedPart.HEAD)));
+            case NONE -> { }
         }
+    }
+
+    /** Package-private so the porting regression suite can protect the double-drop fix. */
+    static MultiBlockGuard multiBlockGuard(Identifier tableId) {
+        Block block = blockForLootTable(tableId);
+        if (block == null) return MultiBlockGuard.NONE;
+        if (block.getDefaultState().contains(Properties.DOUBLE_BLOCK_HALF)) return MultiBlockGuard.LOWER_HALF;
+        if (block.getDefaultState().contains(Properties.BED_PART)) return MultiBlockGuard.BED_HEAD;
+        return MultiBlockGuard.NONE;
     }
 
     private static Block blockForLootTable(Identifier tableId) {
@@ -134,6 +143,8 @@ public final class LootTableInjector {
             default -> LootContextTypes.GENERIC;
         };
     }
+
+    enum MultiBlockGuard { NONE, LOWER_HALF, BED_HEAD }
 
     private LootTableInjector() {}
 }
