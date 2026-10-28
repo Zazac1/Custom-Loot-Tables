@@ -229,8 +229,9 @@ final class LootPreviewScreen extends StyledScreen {
     private void drawStack(DrawContext context, ItemStack stack, int x, int y, int mouseX, int mouseY) {
         context.drawItem(stack, x, y);
         if (stack.getCount() > 1) {
-            String count = Integer.toString(stack.getCount());
-            context.drawTextWithShadow(textRenderer, count, x + 16 - textRenderer.getWidth(count), y + 9, 0xFFFFFFFF);
+            // Item models are rendered on a higher layer than ordinary text in 1.21.1.
+            // Vanilla's slot overlay keeps the amount above the item, like Custom Recipe.
+            context.drawItemInSlot(textRenderer, stack, x, y, Integer.toString(stack.getCount()));
         }
         if (mouseX >= x && mouseX < x + 16 && mouseY >= y && mouseY < y + 16) {
             context.drawItemTooltip(textRenderer, stack, mouseX, mouseY);

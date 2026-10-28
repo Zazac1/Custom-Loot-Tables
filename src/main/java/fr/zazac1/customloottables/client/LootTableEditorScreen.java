@@ -348,10 +348,11 @@ final class LootTableEditorScreen extends StyledScreen {
             context.fill(x, y, x + 20, y + 20, index == selectedEntry ? 0xAA335588 : 0xAA303030);
             context.drawBorder(x, y, 20, 20, index == selectedEntry ? 0xFFFFFFFF : 0xFF666666);
             Identifier id = Identifier.tryParse(entry.item_id);
-            if (id != null && Registries.ITEM.containsId(id)) context.drawItem(new ItemStack(Registries.ITEM.get(id)), x + 2, y + 2);
-            if (entry.max_count > 1) {
-                String amount = Integer.toString(entry.max_count);
-                context.drawTextWithShadow(textRenderer, amount, x + 18 - textRenderer.getWidth(amount), y + 11, 0xFFFFFFFF);
+            ItemStack stack = id != null && Registries.ITEM.containsId(id)
+                    ? new ItemStack(Registries.ITEM.get(id)) : ItemStack.EMPTY;
+            if (!stack.isEmpty()) context.drawItem(stack, x + 2, y + 2);
+            if (!stack.isEmpty() && entry.max_count > 1) {
+                context.drawItemInSlot(textRenderer, stack, x + 2, y + 2, Integer.toString(entry.max_count));
             }
             if (mouseX >= x && mouseX < x + 20 && mouseY >= y && mouseY < y + 20) {
                 context.drawTooltip(textRenderer, List.of(Text.literal(entry.item_id),
